@@ -520,3 +520,76 @@ export const addAddress = async (req, res) => {
     });
   }
 };
+
+export const dummydata  = async (req, res) => {
+  console.log("address controller hitting");
+
+  try {
+    const userId = req.user?._id;
+
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized",
+      });
+    }
+
+    const { pincode, state, city, houseNumber, area, landmark, addressType } =
+      req.body;
+
+    // Required fields
+    if (!pincode || !state || !city || !houseNumber || !area) {
+      return res.status(400).json({
+        success: false,
+        message: "All required address fields must be provided",
+      });
+    }
+
+    // Pincode validation
+    if (!/^\d{6}$/.test(pincode)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid pincode",
+      });
+    }
+
+    const allowedTypes = ["home", "office", "other"];
+    if (!allowedTypes.includes(addressType)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid address type",
+      });
+    }
+
+    // 1️⃣ Create address
+    const address = await Address.create({
+      userId,
+      pincode,
+      state: state.trim(),
+      city: city.trim(),
+      houseNumber: houseNumber.trim(),
+      area: area.trim(),
+      landmark: landmark?.trim() || "",
+      addressType,
+    });
+
+    // 2️⃣ Assign address to user
+    await User.findByIdAndUpdate(
+      userId,
+      { $push: { addresses: address._id } },
+      { new: true }
+    );
+
+    return res.status(201).json({
+      success: true,
+      message: "Address added and assigned to user successfully",
+      address,
+    });
+  } catch (err) {
+    console.error("Add Address Error:", err);
+    return res.status(500).json({
+      success: false,
+      message: "Server error",
+    });
+  }
+};
