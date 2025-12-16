@@ -43,8 +43,8 @@ const userSchema = new mongoose.Schema(
       },
     ],
     geoLocation: {
-      lat: { type: Number, default: null,  },
-      lng: { type: Number, default: null,  },
+      lat: { type: Number, default: null },
+      lng: { type: Number, default: null },
     },
     otp: {
       type: String,

@@ -126,7 +126,6 @@ export const verifyOtp = async (req, res) => {
 
     let userOrVendor;
 
-    // ⭐ Role-based model selection
     if (role === "vendor") {
       userOrVendor = await Vendor.findOne({ phone }).select(
         "+otp +otpExpiry +status"
@@ -149,7 +148,6 @@ export const verifyOtp = async (req, res) => {
       }
     }
 
-    // ⭐ OTP Match Check
     if (userOrVendor.otp !== otp) {
       return res.status(400).json({
         success: false,
@@ -157,7 +155,6 @@ export const verifyOtp = async (req, res) => {
       });
     }
 
-    // ⭐ OTP Expiry Check
     if (userOrVendor.otpExpiry < Date.now()) {
       return res.status(400).json({
         success: false,
@@ -165,14 +162,12 @@ export const verifyOtp = async (req, res) => {
       });
     }
 
-    // ⭐ Clear OTP after verification
     userOrVendor.otp = undefined;
     userOrVendor.otpExpiry = undefined;
     userOrVendor.isVerified = true;
 
     await userOrVendor.save();
 
-    // ⭐ VENDOR APPROVAL CHECK
     if (role === "vendor") {
       if (userOrVendor.status !== "approved") {
         return res.status(200).json({
@@ -184,7 +179,6 @@ export const verifyOtp = async (req, res) => {
       }
     }
 
-    // ⭐ JWT Based on Role
     const token =
       role === "vendor"
         ? jwt.sign({ id: userOrVendor._id }, process.env.JWT_VENDOR_KEY, {
@@ -245,12 +239,10 @@ export const profile = async (req, res) => {
 export const updateProfile = async (req, res) => {
   try {
     const userId = req.user._id;
-    const { name, dob, gender, geoLocation } = req.body;
-    console.log(name, dob, gender, geoLocation);
+    const { name, dob, gender } = req.body;
 
     const allowedGenders = ["male", "female", "other"];
 
-    // ===== Validate gender =====
     if (gender && !allowedGenders.includes(gender.toLowerCase())) {
       return res.status(400).json({
         success: false,
@@ -258,7 +250,6 @@ export const updateProfile = async (req, res) => {
       });
     }
 
-    // ===== Validate name =====
     if (name && (name.length < 2 || name.length > 50)) {
       return res.status(400).json({
         success: false,
@@ -266,16 +257,17 @@ export const updateProfile = async (req, res) => {
       });
     }
 
-    // ===== Validate DOB =====
     if (dob) {
       const dobDate = new Date(dob);
       const now = new Date();
+
       if (isNaN(dobDate.getTime())) {
         return res.status(400).json({
           success: false,
           message: "Invalid date of birth",
         });
       }
+
       if (dobDate > now) {
         return res.status(400).json({
           success: false,
@@ -284,20 +276,18 @@ export const updateProfile = async (req, res) => {
       }
     }
 
-    // ===== Find User =====
     const user = await User.findById(userId);
     if (!user) {
-      return res
-        .status(404)
-        .json({ success: false, message: "User not found" });
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
     }
 
-    // ===== Update basic info =====
     if (name) user.name = name;
     if (dob) user.dob = new Date(dob);
     if (gender) user.gender = gender.toLowerCase();
 
-    // ===== Update profile image =====
     if (req.file) {
       const allowedTypes = ["image/jpeg", "image/png", "image/jpg"];
       if (!allowedTypes.includes(req.file.mimetype)) {
@@ -307,41 +297,6 @@ export const updateProfile = async (req, res) => {
         });
       }
       user.profile = `/uploads/${req.file.filename}`;
-    }
-
-    // ===== Update geoLocation =====
-    if (geoLocation) {
-      let parsedGeo;
-      try {
-        parsedGeo =
-          typeof geoLocation === "string"
-            ? JSON.parse(geoLocation)
-            : geoLocation;
-      } catch (err) {
-        return res.status(400).json({
-          success: false,
-          message: "Invalid geoLocation format",
-        });
-      }
-
-      // Validate latitude and longitude
-      if (
-        typeof parsedGeo.lat !== "number" ||
-        typeof parsedGeo.lng !== "number" ||
-        parsedGeo.lat < -90 ||
-        parsedGeo.lat > 90 ||
-        parsedGeo.lng < -180 ||
-        parsedGeo.lng > 180
-      ) {
-        return res.status(400).json({
-          success: false,
-          message:
-            "GeoLocation must include valid lat (-90 to 90) and lng (-180 to 180)",
-        });
-      }
-
-      user.geoLocation.lat = parsedGeo.lat;
-      user.geoLocation.lng = parsedGeo.lng;
     }
 
     await user.save();
@@ -520,4 +475,3 @@ export const addAddress = async (req, res) => {
     });
   }
 };
-

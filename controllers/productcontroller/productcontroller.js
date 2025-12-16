@@ -2,13 +2,15 @@ import Product from "../../models/products/productschema.js";
 import Vendor from "../../models/venderschema.js";
 import Category from "../../models/categories/categoryschema.js";
 import SubCategory from "../../models/categories/subcategoryschema.js";
-import Unit from "../../models/units/unitschema.js";
+// import Unit from "../../models/units/unitschema.js";
 import Store from "../../models/Stores/storeschema.js";
 
 import fashionProduct from "../../models/products/fashionproductSchema.js";
 import fashionStore from "../../models/Stores/fashionstoreschema.js";
 
 export const createGroceryProduct = async (req, res) => {
+  console.log("Create grocery Controller hitting ");
+
   try {
     const vendor = req.vendor;
     const {
@@ -19,16 +21,67 @@ export const createGroceryProduct = async (req, res) => {
       stock,
       categoryId,
       subCategoryId,
-      unitId,
+      unit,
       storeId,
     } = req.body;
 
-    // Required field check
-    if (!name || !mrp || !sellingPrice || !unitId || !categoryId || !storeId) {
+    if (!name) {
+      return res.status(404).json({
+        message: "No name found . Please enter your name",
+      });
+    }
+    if (!mrp) {
+      return res.status(404).json({
+        message: "No mrp found . Please enter mrp",
+      });
+    }
+
+    if (!sellingPrice) {
+      return res.status(404).json({
+        message: "No sellingPrice found . Please enter sellingPrice",
+      });
+    }
+
+    if (!categoryId) {
+      return res.status(404).json({
+        message: "No categoryId found . Please enter categoryId",
+      });
+    }
+
+    if (!storeId) {
+      return res.status(404).json({
+        message: "No storeId found . Please enter storeId",
+      });
+    }
+
+    const ALLOWED_UNITS = [
+      "kg",
+      "g",
+      "mg",
+      "l",
+      "ml",
+      "pcs",
+      "piece",
+      "dozen",
+      "pair",
+      "packet",
+      "pack",
+      "box",
+      "bag",
+      "sack",
+      "bunch",
+      "bundle",
+      "bottle",
+      "can",
+      "jar",
+      "tray",
+      "roll",
+    ];
+
+    if (!ALLOWED_UNITS.includes(unit)) {
       return res.status(400).json({
         success: false,
-        message:
-          "Name, MRP, Selling Price, Unit, Category & Store are required",
+        message: "Invalid unit value",
       });
     }
 
@@ -85,15 +138,6 @@ export const createGroceryProduct = async (req, res) => {
       }
     }
 
-    // Validate Unit
-    const unit = await Unit.findById(unitId);
-    if (!unit) {
-      return res.status(404).json({
-        success: false,
-        message: "Unit not found",
-      });
-    }
-
     // Check Duplicate Product inside same store
     const existingProduct = await Product.findOne({
       name: name.trim(),
@@ -119,7 +163,7 @@ export const createGroceryProduct = async (req, res) => {
       stock: stock || 0,
       category: category._id,
       subCategory: subCategory ? subCategory._id : null,
-      unit: unit._id,
+      unit,
       images,
     });
 

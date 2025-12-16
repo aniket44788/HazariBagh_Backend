@@ -61,8 +61,43 @@ const productSchema = new mongoose.Schema(
     },
 
     unit: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Unit",
+      type: String,
+      enum: [
+        // Weight
+        "kg",
+        "g",
+        "mg",
+
+        // Volume
+        "l",
+        "ml",
+
+        // Count based
+        "pcs",
+        "piece",
+        "dozen",
+        "pair",
+
+        // Packaging
+        "packet",
+        "pack",
+        "box",
+        "bag",
+        "sack",
+
+        // Produce specific
+        "bunch",
+        "bundle",
+
+        // Liquid containers
+        "bottle",
+        "can",
+        "jar",
+
+        // Misc
+        "tray",
+        "roll",
+      ],
       required: true,
     },
 
@@ -70,7 +105,6 @@ const productSchema = new mongoose.Schema(
       type: Number,
       default: 1,
     },
-
 
     category: {
       type: mongoose.Schema.Types.ObjectId,

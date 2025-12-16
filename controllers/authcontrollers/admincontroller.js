@@ -135,6 +135,7 @@ export const adminProfile = async (req, res) => {
 };
 
 export const approveVendor = async (req, res) => {
+  console.log("approve Vendor controller hitting --- >")
   try {
     const vendorId = req.params.id;
 
