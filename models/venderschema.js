@@ -6,8 +6,6 @@ const vendorSchema = new mongoose.Schema(
 
     email: {
       type: String,
-      unique: true,
-      sparse: true,
       lowercase: true,
     },
 
@@ -19,12 +17,9 @@ const vendorSchema = new mongoose.Schema(
 
     phone: {
       type: String,
-      unique: true,
       required: true,
-      sparse: true,
+      unique: true,
     },
-
-    password: { type: String },
 
     profileImage: {
       type: String,

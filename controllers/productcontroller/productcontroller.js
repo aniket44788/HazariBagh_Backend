@@ -245,12 +245,6 @@ export const createFashionProduct = async (req, res) => {
     // 🖼️ Images
     const images = req.files ? req.files.map((file) => file.path) : [];
 
-    // 🎨 Colors safe parse
-    let parsedColors = [];
-    if (colors) {
-      parsedColors = typeof colors === "string" ? JSON.parse(colors) : colors;
-    }
-
     // ✅ CREATE PRODUCT (JUST ASSIGN IDS)
     const product = await fashionProduct.create({
       vendorId: vendor._id,
@@ -259,12 +253,12 @@ export const createFashionProduct = async (req, res) => {
       price,
       mrp,
       gender,
-      category: categoryId, // ✅ DIRECT ASSIGN
-      subCategory: subCategoryId, // ✅ DIRECT ASSIGN
+      category: categoryId,
+      subCategory: subCategoryId,
       clothSize,
       pantSize,
       shoeSize,
-      colors: parsedColors,
+      colors,
       fashionproductimage: images,
     });
 

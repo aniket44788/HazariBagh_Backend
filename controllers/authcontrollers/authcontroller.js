@@ -5,7 +5,8 @@ import User from "../../models/userschema.js";
 import Address from "../../models/addressschema.js";
 import Vendor from "../../models/venderschema.js";
 import jwt from "jsonwebtoken";
-
+import Product from "../../models/products/productschema.js";
+import Cart from "../../models/cartschema.js";
 const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
 export const sendOtp = async (req, res) => {
@@ -236,12 +237,58 @@ export const profile = async (req, res) => {
   }
 };
 
-export const updateProfile = async (req, res) => {
+export const deleteAccount = async (req, res) => {
+  console.log("delete account hitting ");
   try {
     const userId = req.user._id;
-    const { name, dob, gender } = req.body;
+    console.log(userId);
+    const user = await User.findById(userId);
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    // 🔴 Optional: related cleanup
+    await Cart.deleteOne({ userId }); // cart delete
+    await Address.deleteMany({ userId }); // addresses delete
+
+    // 🔥 finally delete user
+    await User.findByIdAndDelete(userId);
+
+    return res.status(200).json({
+      success: true,
+      message: "User account deleted successfully",
+    });
+  } catch (error) {
+    console.error("Delete Account Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to delete account, Internal Server Error",
+    });
+  }
+};
+
+export const updateProfile = async (req, res) => {
+  console.log("User update profile hitting ");
+  try {
+    const userId = req.user._id;
+    const { name, dob, gender, geoLocation } = req.body;
+    if (!geoLocation) {
+      return res.status(404).json({
+        success: false,
+        message: "No geo location found!",
+      });
+    }
 
     const allowedGenders = ["male", "female", "other"];
+    if (!geoLocation) {
+      return res.status(404).json({
+        message: "Profile can't updated.",
+      });
+    }
 
     if (gender && !allowedGenders.includes(gender.toLowerCase())) {
       return res.status(400).json({
@@ -259,19 +306,21 @@ export const updateProfile = async (req, res) => {
 
     if (dob) {
       const dobDate = new Date(dob);
-      const now = new Date();
-
-      if (isNaN(dobDate.getTime())) {
+      if (isNaN(dobDate.getTime()) || dobDate > new Date()) {
         return res.status(400).json({
           success: false,
           message: "Invalid date of birth",
         });
       }
+    }
 
-      if (dobDate > now) {
+    if (geoLocation) {
+      const { lat, lng } = geoLocation;
+
+      if (lat < -90 || lat > 90 || lng < -180 || lng > 180) {
         return res.status(400).json({
           success: false,
-          message: "Date of birth cannot be in the future",
+          message: "Invalid latitude or longitude range",
         });
       }
     }
@@ -287,6 +336,7 @@ export const updateProfile = async (req, res) => {
     if (name) user.name = name;
     if (dob) user.dob = new Date(dob);
     if (gender) user.gender = gender.toLowerCase();
+    if (geoLocation) user.geoLocation = geoLocation;
 
     if (req.file) {
       const allowedTypes = ["image/jpeg", "image/png", "image/jpg"];
@@ -472,6 +522,74 @@ export const addAddress = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: "Server error",
+    });
+  }
+};
+
+// This is pending
+
+export const addToCart = async (req, res) => {
+  console.log("Addto cart hitting ");
+  try {
+    const userId = req.user._id;
+    console.log(userId);
+
+    const { productId, storeId } = req.body;
+    console.log(productId, "Product id");
+    console.log(storeId, "Store id");
+    if (!productId || !storeId) {
+      return res.status(400).json({
+        success: false,
+        message: "productId and storeId are required",
+      });
+    }
+
+    const product = await Product.findById(productId);
+
+    if (!product) {
+      return res.status(404).json({
+        success: false,
+        message: "Product not found",
+      });
+    }
+
+    let cart = await Cart.findOne({ userId });
+
+    if (!cart) {
+      cart = new Cart({ userId, items: [] });
+    }
+
+    const existingItem = cart.items.find(
+      (item) => item.productId.toString() === productId
+    );
+
+    if (existingItem) {
+      existingItem.quantity += 1;
+    } else {
+      cart.items.push({
+        productId,
+        storeId,
+        quantity: 1,
+        price: product.sellingPrice, // ya product.price
+      });
+    }
+
+    cart.totalAmount = cart.items.reduce(
+      (total, item) => total + item.price * item.quantity,
+      0
+    );
+
+    await cart.save();
+
+    return res.status(200).json({
+      success: true,
+      message: "Product added to cart",
+      cart,
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: "Failed to add product to cart",
     });
   }
 };

@@ -2,6 +2,8 @@ import express from "express";
 import { upload } from "../../utils/multer.js";
 import {
   addAddress,
+  addToCart,
+  deleteAccount,
   googleLogin,
   linkEmail,
   linkPhone,
@@ -19,12 +21,16 @@ userRouter.post("/verifyotp", verifyOtp);
 userRouter.post("/linkemail", authMiddleware, linkEmail);
 
 userRouter.get("/profile", authMiddleware, profile);
+userRouter.delete("/delete" , authMiddleware , deleteAccount)
 userRouter.put(
   "/update-profile",
   upload.single("profile"),
   authMiddleware,
   updateProfile
 );
+
+
+
 userRouter.post("/linkphone", authMiddleware, linkPhone);
 
 userRouter.post("/google-login", googleLogin);
@@ -114,6 +120,6 @@ userRouter.get("/testauth", (req, res) => {
 
 userRouter.post("/addaddress" , authMiddleware , addAddress  )
 
-
+userRouter.post("/addtocart" , authMiddleware  , addToCart  ) ;
 
 export default userRouter;

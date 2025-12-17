@@ -67,3 +67,80 @@ export const getallCategory = async (req, res) => {
     });
   }
 };
+
+export const updateCategory = async (req, res) => {
+  console.log("Update category is hitting ");
+  try {
+    const { id } = req.params;
+    console.log(id);
+    const { name } = req.body;
+    console.log(name);
+    const category = await Category.findById(id);
+
+    if (!category) {
+      return res.status(404).json({
+        success: false,
+        message: "Category not found",
+      });
+    }
+
+    if (name) {
+      const existing = await Category.findOne({
+        name: name.trim(),
+        _id: { $ne: id },
+      });
+
+      if (existing) {
+        return res.status(400).json({
+          success: false,
+          message: "Category name already exists",
+        });
+      }
+
+      category.name = name.trim();
+    }
+
+    if (req.file) {
+      category.image = `/uploads/${req.file.filename}`;
+    }
+
+    await category.save();
+
+    return res.status(200).json({
+      success: true,
+      message: "Category updated successfully",
+      category,
+    });
+  } catch (error) {
+    console.error("UPDATE CATEGORY ERROR =>", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to update category",
+    });
+  }
+};
+
+export const deleteCategory = async (req, res) => {
+  console.log("delete Category Is hitting ");
+  try {
+    const { id } = req.params;
+    console.log(id);
+    if (!id) {
+      return res.status(400).json({
+        message: "No category Found.",
+      });
+    }
+    const deleteCategory = await Category.findOneAndDelete(id);
+    return res.status(200).json({
+      sucess: true,
+      message: "Category Deleted Successfully",
+      deleteCategory,
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: "Failed to delete category , Internal Server Error!",
+      error,
+    });
+  }
+};

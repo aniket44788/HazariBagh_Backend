@@ -9,7 +9,6 @@ import categoryRouter from "./routes/categoryroutes/categoryroute.js";
 import vendorRouter from "./routes/vendorroutes/vendorroute.js";
 import subcategoryRoute from "./routes/subcategoryroutes/subcategoryroute.js";
 import productRouter from "./routes/productroute/productroute.js";
-import unitRouter from "./routes/categoryroutes/unitroutes.js";
 import orderRouter from "./routes/orderroutes/orderroute.js";
 
 database();
@@ -36,9 +35,10 @@ app.use("/subcategory", subcategoryRoute);
 
 app.use("/product", productRouter);
 
-app.use("/unit", unitRouter);
 
 app.use("/order", orderRouter);
+
+
 
 app.get("/", (req, res) => {
   return res.send(" Hazari Bag Server is started");
