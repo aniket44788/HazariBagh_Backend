@@ -135,9 +135,9 @@ export const adminProfile = async (req, res) => {
 };
 
 export const approveVendor = async (req, res) => {
-  console.log("approve Vendor controller hitting --- >")
   try {
     const vendorId = req.params.id;
+    const { action, reason } = req.body;
 
     const vendor = await Vendor.findById(vendorId);
 
@@ -148,28 +148,75 @@ export const approveVendor = async (req, res) => {
       });
     }
 
-    if (vendor.status === "approved") {
+    if (action === "approved") {
+      if (vendor.status === "approved") {
+        return res.status(400).json({
+          success: false,
+          message: "Vendor already approved",
+        });
+      }
+
+      vendor.status = "approved";
+      vendor.approved = true;
+      vendor.rejectionReason = null;
+      vendor.createdByAdmin = req.admin._id;
+
+      await vendor.save();
+
+      return res.status(200).json({
+        success: true,
+        message: "Vendor approved successfully!",
+        vendor,
+      });
+    } else if (action === "rejected") {
+      if (!reason) {
+        return res.status(400).json({
+          success: false,
+          message: "Rejection reason is required",
+        });
+      }
+
+      vendor.status = "rejected";
+      vendor.approved = false;
+      vendor.rejectionReason = reason;
+      vendor.createdByAdmin = req.admin._id;
+
+      await vendor.save();
+
+      return res.status(200).json({
+        success: true,
+        message: "Vendor rejected successfully!",
+        vendor,
+      });
+    } else {
       return res.status(400).json({
         success: false,
-        message: "Vendor already approved",
+        message: "Invalid action. Must be 'approve' or 'reject'.",
       });
     }
+  } catch (error) {
+    console.error("Approve/Reject Vendor Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to process vendor",
+      error,
+    });
+  }
+};
 
-    vendor.status = "approved";
-    vendor.approved = "true";
-    vendor.createdByAdmin = req.admin._id;
-    await vendor.save();
-
+export const getPendingVendors = async (req, res) => {
+  try {
+    const pendingVendors = await Vendor.find({ status: "pending" });
     return res.status(200).json({
       success: true,
-      message: "Vendor approved successfully!",
-      vendor,
+      message: "Pending vendors fetched successfully",
+      data: pendingVendors,
     });
   } catch (error) {
-    res.status(500).json({
+    console.error("Get Pending Vendors Error:", error);
+    return res.status(500).json({
       success: false,
-      message: "Failed to approve vendor",
-      error,
+      message: "Internal server error",
     });
   }
 };

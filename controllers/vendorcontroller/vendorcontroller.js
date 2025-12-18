@@ -3,9 +3,364 @@ import Store from "../../models/Stores/storeschema.js";
 import FashionStore from "../../models/Stores/fashionstoreschema.js";
 import User from "../../models/userschema.js";
 import { calculateDistance } from "../../utils/distance.js";
+import Category from "../../models/categories/categoryschema.js";
+import { generateOtp } from "../../utils/generateOtp.js";
+import jwt from "jsonwebtoken";
+
+// Vendor ---------- >
+
+export const createVendor = async (req, res) => {
+  try {
+    const {
+      name,
+      email,
+      phone,
+      shopName,
+      shopDescription,
+      category,
+      street,
+      city,
+      state,
+      pincode,
+      landmark,
+      lat,
+      lng,
+      aadharNumber,
+      panNumber,
+      gstNumber,
+    } = req.body;
+
+    // ================= VALIDATION =================
+    if (
+      !name ||
+      !phone ||
+      !shopName ||
+      !category ||
+      !street ||
+      !city ||
+      !state ||
+      !pincode
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "All required fields must be filled",
+      });
+    }
+
+    // ================= CATEGORY VALIDATION =================
+    const categoryExists = await Category.findById(category);
+    if (!categoryExists) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid category id",
+      });
+    }
+
+    // ================= DUPLICATE CHECK / RE-REGISTER =================
+    let vendorExist = await Vendor.findOne({ phone });
+
+    if (vendorExist) {
+      if (vendorExist.status === "rejected") {
+        // ================= RE-REGISTER REJECTED VENDOR =================
+        vendorExist.name = name;
+        vendorExist.email = email;
+        vendorExist.shop = {
+          name: shopName,
+          description: shopDescription,
+          category: categoryExists._id,
+          shopImage:
+            req.files?.shopImage?.[0]?.path || vendorExist.shop.shopImage,
+          documents: {
+            shopLicense:
+              req.files?.shopLicense?.[0]?.path ||
+              vendorExist.shop.documents.shopLicense,
+            fssai:
+              req.files?.fssai?.[0]?.path || vendorExist.shop.documents.fssai,
+          },
+          address: {
+            street,
+            city,
+            state,
+            pincode,
+            landmark,
+          },
+          geoLocation: {
+            lat,
+            lng,
+          },
+          verified: false,
+        };
+        vendorExist.aadhar.numberMasked = aadharNumber;
+        vendorExist.aadhar.documentImage =
+          req.files?.aadharDoc?.[0]?.path || vendorExist.aadhar.documentImage;
+        vendorExist.pan.number = panNumber;
+        vendorExist.pan.documentImage =
+          req.files?.panDoc?.[0]?.path || vendorExist.pan.documentImage;
+        vendorExist.gst.number = gstNumber;
+        vendorExist.gst.documentImage =
+          req.files?.gstDoc?.[0]?.path || vendorExist.gst.documentImage;
+
+        vendorExist.status = "pending";
+        vendorExist.approved = false;
+        vendorExist.rejectionReason = null;
+        vendorExist.loginMethod = "phone";
+
+        await vendorExist.save();
+
+        return res.status(200).json({
+          success: true,
+          message:
+            "Vendor re-registered successfully. Please wait for admin approval.",
+          vendorId: vendorExist._id,
+        });
+      } else {
+        return res.status(409).json({
+          success: false,
+          message: "Vendor already applied with this phone number",
+        });
+      }
+    }
+
+    // ================= FILES =================
+    const profileImage = req.files?.profileImage?.[0]?.path || null;
+    const shopImage = req.files?.shopImage?.[0]?.path || null;
+    const shopLicense = req.files?.shopLicense?.[0]?.path || null;
+    const fssai = req.files?.fssai?.[0]?.path || null;
+    const aadharDoc = req.files?.aadharDoc?.[0]?.path || null;
+    const panDoc = req.files?.panDoc?.[0]?.path || null;
+    const gstDoc = req.files?.gstDoc?.[0]?.path || null;
+
+    // ================= CREATE NEW VENDOR =================
+    const vendor = await Vendor.create({
+      name,
+      email,
+      phone,
+      profileImage,
+
+      shop: {
+        name: shopName,
+        description: shopDescription,
+        category: categoryExists._id,
+        shopImage,
+        documents: {
+          shopLicense,
+          fssai,
+        },
+        address: {
+          street,
+          city,
+          state,
+          pincode,
+          landmark,
+        },
+        geoLocation: {
+          lat,
+          lng,
+        },
+      },
+
+      aadhar: {
+        numberMasked: aadharNumber,
+        documentImage: aadharDoc,
+      },
+
+      pan: {
+        number: panNumber,
+        documentImage: panDoc,
+      },
+
+      gst: {
+        number: gstNumber,
+        documentImage: gstDoc,
+      },
+
+      status: "pending",
+      approved: false,
+      loginMethod: "phone",
+    });
+
+    return res.status(201).json({
+      success: true,
+      message:
+        "Vendor application submitted successfully. Please wait for admin approval.",
+      vendorId: vendor._id,
+    });
+  } catch (error) {
+    console.error("Vendor Create Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+export const sendVendorOtp = async (req, res) => {
+  try {
+    const { phone } = req.body;
+
+    // ================= VALIDATION =================
+    if (!phone) {
+      return res.status(400).json({
+        success: false,
+        message: "Phone number is required",
+      });
+    }
+
+    // ================= CHECK VENDOR =================
+    const vendor = await Vendor.findOne({ phone });
+
+    if (!vendor) {
+      return res.status(404).json({
+        success: false,
+        message: "Vendor not registered",
+      });
+    }
+
+    // ================= ADMIN APPROVAL CHECK =================
+    if (!vendor.approved || vendor.status !== "approved") {
+      return res.status(403).json({
+        success: false,
+        message:
+          vendor.status === "rejected"
+            ? `Application rejected: ${
+                vendor.rejectionReason || "Contact support"
+              }`
+            : "Your application is under review. Please wait for admin approval.",
+      });
+    }
+
+    // ================= GENERATE OTP =================
+    const otp = generateOtp();
+    const otpExpiry = new Date(Date.now() + 5 * 60 * 1000);
+
+    vendor.otp = otp;
+    vendor.otpExpiry = otpExpiry;
+    vendor.loginMethod = "phone";
+
+    await vendor.save();
+
+    // ================= MOCK SEND =================
+    console.log(`Vendor OTP for ${phone}: ${otp}`);
+
+    return res.status(200).json({
+      success: true,
+      message: "OTP sent successfully",
+      vendorId: vendor._id,
+      otp, // ❌ remove in production
+    });
+  } catch (error) {
+    console.error("Send Vendor OTP Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+};
+
+export const verifyVendorOtp = async (req, res) => {
+  try {
+    const { phone, otp } = req.body;
+
+    // ================= VALIDATION =================
+    if (!phone || !otp) {
+      return res.status(400).json({
+        success: false,
+        message: "Phone and OTP are required",
+      });
+    }
+
+    // ================= FIND VENDOR =================
+    const vendor = await Vendor.findOne({ phone }).select(
+      "+otp +otpExpiry approved status"
+    );
+
+    if (!vendor) {
+      return res.status(404).json({
+        success: false,
+        message: "Vendor not found",
+      });
+    }
+
+    if (vendor.status === "rejected") {
+      return res.status(403).json({
+        success: false,
+        message: `Your application has been rejected. Reason: ${
+          vendor.rejectionReason || "Contact admin"
+        }`,
+      });
+    }
+    // ================= ADMIN APPROVAL CHECK =================
+    if (!vendor.approved || vendor.status !== "approved") {
+      return res.status(403).json({
+        success: false,
+        message: "Vendor not approved by admin yet",
+      });
+    }
+
+    // ================= OTP EXISTS =================
+    if (!vendor.otp || !vendor.otpExpiry) {
+      return res.status(400).json({
+        success: false,
+        message: "OTP not generated",
+      });
+    }
+
+    // ================= OTP EXPIRY =================
+    if (vendor.otpExpiry < Date.now()) {
+      return res.status(400).json({
+        success: false,
+        message: "OTP expired",
+      });
+    }
+
+    // ================= OTP MATCH =================
+    if (vendor.otp !== otp) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid OTP",
+      });
+    }
+
+    // ================= MARK VERIFIED =================
+    vendor.otp = undefined;
+    vendor.otpExpiry = undefined;
+    vendor.verified = true;
+
+    await vendor.save();
+
+    // ================= GENERATE TOKEN =================
+    const token = jwt.sign(
+      {
+        id: vendor._id,
+        role: "vendor",
+      },
+      process.env.JWT_VENDOR_KEY,
+      { expiresIn: "70d" }
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: "OTP verified successfully",
+      token,
+      vendor: {
+        id: vendor._id,
+        name: vendor.name,
+        phone: vendor.phone,
+        shopName: vendor.shop?.name,
+        approved: vendor.approved,
+      },
+    });
+  } catch (error) {
+    console.error("Verify Vendor OTP Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+};
 
 export const vendorProfile = async (req, res) => {
-  console.log("Vendor profile contorller is hittin ------ >");
+  console.log("Vendor profile contorller is hitting ------ >");
   try {
     const vendor = req.vendor;
     if (!vendor) {
@@ -27,84 +382,89 @@ export const vendorProfile = async (req, res) => {
   }
 };
 
-export const updateVendor = async (req, res) => {
-  console.log("Update Vendor Is hitting -- >");
-
+// PUT /vendor/update-rejected
+export const updateRejectedVendor = async (req, res) => {
+  console.log("Vendor Reject update Controller is hitting");
   try {
-    const vendorId = req.vendor._id;
-    console.log(vendorId);
-    const { name, phone, email, address, geoLocation } = req.body;
-
-    const vendor = await Vendor.findById(vendorId);
-    console.log(vendor);
+    const { phone } = req.body;
+    const vendor = await Vendor.findOne({ phone });
 
     if (!vendor) {
+      return res.status(404).json({
+        success: false,
+        message: "Vendor not found",
+      });
+    }
+
+    if (vendor.status !== "rejected") {
       return res.status(400).json({
         success: false,
-        message: "Failed to found vendor",
+        message: "Only rejected vendors can update application",
       });
     }
 
-    if (name) vendor.name = name.trim();
+    // ============ BASIC FIELDS ============
+    if (req.body.name) vendor.name = req.body.name;
+    if (req.body.email) vendor.email = req.body.email;
 
-    // email (unique check)
-    if (email && email !== vendor.email) {
-      const emailExists = await Vendor.findOne({
-        email: email.toLowerCase(),
-        _id: { $ne: vendorId },
-      });
+    // ============ SHOP ============
+    if (req.body.shopName) vendor.shop.name = req.body.shopName;
+    if (req.body.shopDescription)
+      vendor.shop.description = req.body.shopDescription;
 
-      if (emailExists) {
-        return res.status(400).json({
-          success: false,
-          message: "Email already in use",
-        });
-      }
+    // ============ ADDRESS ============
+    vendor.shop.address = {
+      ...vendor.shop.address,
+      ...req.body.address,
+    };
 
-      vendor.email = email.toLowerCase();
-    }
-
-    // address (object merge)
-    if (address) {
-      vendor.address = {
-        ...vendor.address,
-        ...address,
+    // ============ GEO ============
+    if (req.body.geoLocation) {
+      vendor.shop.geoLocation = {
+        lat: req.body.geoLocation.lat,
+        lng: req.body.geoLocation.lng,
       };
     }
 
-    // geoLocation
-    if (geoLocation) {
-      vendor.geoLocation = {
-        lat: geoLocation.lat ?? vendor.geoLocation.lat,
-        lng: geoLocation.lng ?? vendor.geoLocation.lng,
-      };
+    // ============ DOCUMENTS ============
+    if (req.files?.shopLicense) {
+      vendor.shop.documents.shopLicense = req.files.shopLicense[0].path;
     }
 
-    // images
-    if (req.files?.profileImage) {
-      vendor.profileImage = `/uploads/${req.files.profileImage[0].filename}`;
+    if (req.files?.fssai) {
+      vendor.shop.documents.fssai = req.files.fssai[0].path;
     }
 
-    if (req.files?.shopImage) {
-      vendor.shopImage = `/uploads/${req.files.shopImage[0].filename}`;
+    if (req.files?.panDoc) {
+      vendor.pan.documentImage = req.files.panDoc[0].path;
     }
+
+    if (req.files?.aadharDoc) {
+      vendor.aadhar.documentImage = req.files.aadharDoc[0].path;
+    }
+
+    // ============ RESET STATUS ============
+    vendor.status = "pending";
+    vendor.approved = false;
+    vendor.rejectionReason = null;
+    vendor.rejectedFields = [];
 
     await vendor.save();
 
     return res.status(200).json({
       success: true,
-      message: "Vendor profile updated successfully",
-      vendor,
+      
+      message:
+        "Application updated successfully and sent again for admin approval",
+        vendor
     });
   } catch (error) {
     return res.status(500).json({
       success: false,
-      message: "Failed to update Vendor Profile, Internal Server Error",
-      error,
+      message: "Failed to update vendor application",
     });
   }
 };
-
 //This is Grocerry Store  --- >
 
 export const createStore = async (req, res) => {

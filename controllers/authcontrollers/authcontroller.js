@@ -2,8 +2,7 @@ import { sendEmail } from "../../utils/sendEmail.js";
 import { generateOtp } from "../../utils/generateOtp.js";
 import { OAuth2Client } from "google-auth-library";
 import User from "../../models/userschema.js";
-import Address from "../../models/addressschema.js";
-import Vendor from "../../models/venderschema.js";
+import Address from "../../models/addressschema.js"
 import jwt from "jsonwebtoken";
 import Product from "../../models/products/productschema.js";
 import Cart from "../../models/cartschema.js";
@@ -11,7 +10,7 @@ const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
 export const sendOtp = async (req, res) => {
   try {
-    const { phone, role = "user" } = req.body;
+    const { phone } = req.body;
 
     if (!phone) {
       return res.status(400).json({
@@ -23,34 +22,27 @@ export const sendOtp = async (req, res) => {
     const otp = generateOtp();
     const otpExpiry = Date.now() + 10 * 60 * 1000;
 
-    let userOrVendor;
+    // 🔐 USER ONLY
+    let user = await User.findOne({ phone });
 
-    if (role === "vendor") {
-      userOrVendor = await Vendor.findOne({ phone });
-
-      if (!userOrVendor) {
-        userOrVendor = await Vendor.create({ phone });
-      }
-    } else {
-      userOrVendor = await User.findOne({ phone });
-
-      if (!userOrVendor) {
-        userOrVendor = await User.create({ phone, role: "user" });
-      }
+    if (!user) {
+      user = await User.create({
+        phone,
+        role: "user",
+        loginMethod: "phone",
+      });
     }
 
-    userOrVendor.otp = otp;
-    userOrVendor.otpExpiry = otpExpiry;
-    userOrVendor.loginMethod = "phone";
+    user.otp = otp;
+    user.otpExpiry = otpExpiry;
+    await user.save();
 
-    await userOrVendor.save();
-
-    console.log(`OTP sent to ${role} (${phone}) => ${otp}`);
+    console.log(`OTP sent to USER (${phone}) => ${otp}`);
 
     return res.status(200).json({
       success: true,
-      message: `${role} OTP sent successfully`,
-      otp,
+      message: "OTP sent successfully",
+      otp, // ⚠️ production में remove
     });
   } catch (error) {
     console.error("SEND OTP ERROR =>", error);
@@ -114,9 +106,10 @@ export const linkEmail = async (req, res) => {
   }
 };
 
+
 export const verifyOtp = async (req, res) => {
   try {
-    const { phone, otp, role = "user" } = req.body;
+    const { phone, otp } = req.body;
 
     if (!phone || !otp) {
       return res.status(400).json({
@@ -125,85 +118,60 @@ export const verifyOtp = async (req, res) => {
       });
     }
 
-    let userOrVendor;
+    // 🔐 USER ONLY
+    const user = await User.findOne({ phone }).select("+otp +otpExpiry");
 
-    if (role === "vendor") {
-      userOrVendor = await Vendor.findOne({ phone }).select(
-        "+otp +otpExpiry +status"
-      );
-
-      if (!userOrVendor) {
-        return res.status(400).json({
-          success: false,
-          message: "Vendor not found",
-        });
-      }
-    } else {
-      userOrVendor = await User.findOne({ phone }).select("+otp +otpExpiry");
-
-      if (!userOrVendor) {
-        return res.status(400).json({
-          success: false,
-          message: "User not found",
-        });
-      }
+    if (!user) {
+      return res.status(400).json({
+        success: false,
+        message: "User not found",
+      });
     }
 
-    if (userOrVendor.otp !== otp) {
+    // ❌ Invalid OTP
+    if (user.otp !== otp) {
       return res.status(400).json({
         success: false,
         message: "Invalid OTP",
       });
     }
 
-    if (userOrVendor.otpExpiry < Date.now()) {
+    // ⏰ OTP expired
+    if (user.otpExpiry < Date.now()) {
       return res.status(400).json({
         success: false,
         message: "OTP has expired",
       });
     }
 
-    userOrVendor.otp = undefined;
-    userOrVendor.otpExpiry = undefined;
-    userOrVendor.isVerified = true;
+    // ✅ Verified
+    user.otp = undefined;
+    user.otpExpiry = undefined;
+    user.isVerified = true;
 
-    await userOrVendor.save();
+    await user.save();
 
-    if (role === "vendor") {
-      if (userOrVendor.status !== "approved") {
-        return res.status(200).json({
-          success: true,
-          approvalPending: true,
-          message: "Your account is pending admin approval. Please wait.",
-          vendorStatus: userOrVendor.status,
-        });
-      }
-    }
-
-    const token =
-      role === "vendor"
-        ? jwt.sign({ id: userOrVendor._id }, process.env.JWT_VENDOR_KEY, {
-            expiresIn: "90d",
-          })
-        : jwt.sign({ id: userOrVendor._id }, process.env.JWT_USER_KEY, {
-            expiresIn: "90d",
-          });
+    // 🎟️ JWT for USER
+    const token = jwt.sign({ id: user._id }, process.env.JWT_USER_KEY, {
+      expiresIn: "90d",
+    });
 
     return res.status(200).json({
       success: true,
-      message: `${role} OTP verified successfully`,
+      message: "OTP verified successfully",
       token,
-      user: userOrVendor,
+      user,
     });
   } catch (error) {
     console.error("VERIFY OTP ERROR =>", error);
     return res.status(500).json({
       success: false,
       message: "Error verifying OTP",
-      error,
     });
   }
 };
+
+
 
 export const profile = async (req, res) => {
   try {
