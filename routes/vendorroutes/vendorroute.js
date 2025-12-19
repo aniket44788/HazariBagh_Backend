@@ -26,15 +26,61 @@ const vendorRouter = express.Router();
 
 vendorRouter.post(
   "/register",
-  upload.fields([
-    { name: "profileImage", maxCount: 1 },
-    { name: "shopImage", maxCount: 1 },
-    { name: "shopLicense", maxCount: 1 },
-    { name: "fssai", maxCount: 1 },
-    { name: "aadharDoc", maxCount: 1 },
-    { name: "panDoc", maxCount: 1 },
-    { name: "gstDoc", maxCount: 1 },
-  ]),
+  (req, res, next) => {
+    upload.fields([
+      { name: "profileImage", maxCount: 1 },
+      { name: "shopImage", maxCount: 1 },
+      { name: "shopLicense", maxCount: 1 },
+      { name: "fssai", maxCount: 1 },
+      { name: "aadharDoc", maxCount: 1 },
+      { name: "panDoc", maxCount: 1 },
+      { name: "gstDoc", maxCount: 1 },
+    ])(req, res, (err) => {
+      // 🔴 Multer errors
+      if (err instanceof multer.MulterError) {
+        if (err.code === "LIMIT_UNEXPECTED_FILE") {
+          return res.status(400).json({
+            success: false,
+            message: "Unexpected file field. Check file field names",
+          });
+        }
+
+        return res.status(400).json({
+          success: false,
+          message: err.message,
+        });
+      }
+
+      // 🔴 Custom fileFilter errors
+      if (err) {
+        return res.status(400).json({
+          success: false,
+          message: err.message,
+        });
+      }
+
+      // ✅ REQUIRED FILE CHECK
+      const requiredFiles = [
+        "profileImage",
+        "shopImage",
+        "shopLicense",
+        "aadharDoc",
+        "panDoc",
+        "gstDoc",
+      ];
+
+      for (const file of requiredFiles) {
+        if (!req.files?.[file]?.length) {
+          return res.status(400).json({
+            success: false,
+            message: `${file} file is required`,
+          });
+        }
+      }
+
+      next();
+    });
+  },
   createVendor
 );
 
@@ -62,8 +108,12 @@ vendorRouter.put(
 
 vendorRouter.post(
   "/createstore",
-  upload.single("storeImage"),
   vendorAuth,
+  upload.fields([
+    { name: "storeImage", maxCount: 1 },
+    { name: "shopLicense", maxCount: 1 },
+    { name: "fssai", maxCount: 1 },
+  ]),
   createStore
 );
 

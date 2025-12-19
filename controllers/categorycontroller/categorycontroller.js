@@ -3,14 +3,17 @@ import Category from "../../models/categories/categoryschema.js";
 export const createCategory = async (req, res) => {
   console.log("createCategory controller hitting --- >");
   try {
-    const { name } = req.body;
+    const { name } = req.body; // storeModel removed
     console.log(name);
+
+    // ================= VALIDATION =================
     if (!name) {
       return res
         .status(400)
         .json({ success: false, message: "Category name is required" });
     }
 
+    // ================= DUPLICATE CHECK =================
     const existing = await Category.findOne({ name: name.trim() });
     if (existing) {
       return res
@@ -18,10 +21,12 @@ export const createCategory = async (req, res) => {
         .json({ success: false, message: "Category already exists" });
     }
 
+    // ================= CREATE CATEGORY =================
     const category = new Category({
       name: name.trim(),
       createdBy: req.admin._id,
       image: req.file ? `/uploads/${req.file.filename}` : null,
+      isActive: true,
     });
 
     await category.save();

@@ -26,44 +26,12 @@ const vendorSchema = new mongoose.Schema(
       type: String,
       default: null,
     },
-
-    shop: {
-      name: { type: String, required: true },
-
-      description: { type: String, default: "" },
-
-      category: {
+    stores: [
+      {
         type: mongoose.Schema.Types.ObjectId,
-        ref: "Category",
-        required: true,
+        ref: "Store",
       },
-
-      shopImage: { type: String },
-
-      documents: {
-        shopLicense: { type: String }, // trade license
-        fssai: { type: String }, // food business
-        other: [{ type: String }],
-      },
-
-      address: {
-        street: { type: String, default: "" },
-        city: { type: String, default: "" },
-        state: { type: String, default: "" },
-        pincode: { type: String, default: "" },
-        landmark: { type: String, default: "" },
-      },
-
-      geoLocation: {
-        lat: { type: Number, default: null },
-        lng: { type: Number, default: null },
-      },
-
-      verified: {
-        type: Boolean,
-        default: false,
-      },
-    },
+    ],
 
     // ================= IDENTITY VERIFICATION =================
     aadhar: {

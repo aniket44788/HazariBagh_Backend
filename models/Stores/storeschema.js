@@ -1,8 +1,6 @@
-
 // This is grocery store schema.  + fashion Store schema
 
 import mongoose from "mongoose";
-
 
 const storeSchema = new mongoose.Schema(
   {
@@ -12,55 +10,42 @@ const storeSchema = new mongoose.Schema(
       required: true,
     },
 
-    storeName: {
+    name: {
       type: String,
       required: true,
-      trim: true,
     },
 
-    storeImage: {
-      type: String,
-      default: null,
+    category: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Category",
+      required: true,
     },
 
-    description: {
-      type: String,
-      default: "",
-    },
+    description: String,
+    shopImage: String,
 
-    phone: {
-      type: String,
-      default: "",
-    },
-
-    email: {
-      type: String,
-      default: "",
-      lowercase: true,
+    documents: {
+      shopLicense: String,
+      fssai: String,
+      other: [String],
     },
 
     address: {
-      street: { type: String, default: "" },
-      city: { type: String, default: "" },
-      state: { type: String, default: "" },
-      pincode: { type: String, default: "" },
-      landmark: { type: String, default: "" },
+      street: String,
+      city: String,
+      state: String,
+      pincode: String,
+      landmark: String,
     },
 
     geoLocation: {
-      lat: { type: Number, default: null },
-      lng: { type: Number, default: null },
+      lat: Number,
+      lng: Number,
     },
 
     openingHours: {
       open: { type: String, default: "09:00" },
       close: { type: String, default: "21:00" },
-    },
-
-    status: {
-      type: String,
-      enum: ["active", "inactive", "closed"],
-      default: "active",
     },
 
     delivery: {
@@ -69,45 +54,35 @@ const storeSchema = new mongoose.Schema(
         enum: ["per_km", "flat", "free"],
         default: "per_km",
       },
-
-      perKmCharge: {
-        type: Number,
-        default: 0, // ₹ per km
-        min: 0,
-      },
-
-      flatCharge: {
-        type: Number,
-        default: 0, // ₹ flat
-        min: 0,
-      },
-
-      maxRadiusKm: {
-        type: Number,
-        default: 10, // delivery range
-        min: 1,
-      },
-
-      baseDeliveryTime: {
-        type: Number,
-        default: 20, // minutes
-        min: 0,
-      },
-
-      timePerKm: {
-        type: Number,
-        default: 5, // minutes per km
-        min: 0,
-      },
+      perKmCharge: Number,
+      flatCharge: Number,
+      maxRadiusKm: Number,
+      baseDeliveryTime: Number,
+      timePerKm: Number,
     },
 
     tax: {
       gstPercent: {
         type: Number,
-        default: 0, // GST %
         min: 0,
         max: 28,
       },
+    },
+
+    verified: {
+      type: Boolean,
+      default: false,
+    },
+
+    status: {
+      type: String,
+      enum: ["Blocked", "active", "rejected"],
+      default: "active",
+    },
+
+    isActive: {
+      type: Boolean,
+      default: true,
     },
   },
   { timestamps: true }

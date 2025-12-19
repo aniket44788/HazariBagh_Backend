@@ -17,10 +17,10 @@ export const createVendor = async (req, res) => {
       phone,
       shopName,
       shopDescription,
-      category,
       street,
       city,
       state,
+      category, // ✅ MUST be here
       pincode,
       landmark,
       lat,
@@ -35,7 +35,6 @@ export const createVendor = async (req, res) => {
       !name ||
       !phone ||
       !shopName ||
-      !category ||
       !street ||
       !city ||
       !state ||
@@ -46,80 +45,36 @@ export const createVendor = async (req, res) => {
         message: "All required fields must be filled",
       });
     }
+    let finalCategory;
 
-    // ================= CATEGORY VALIDATION =================
-    const categoryExists = await Category.findById(category);
-    if (!categoryExists) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid category id",
-      });
-    }
+    // Case 1: category id frontend से आया
+    if (category) {
+      finalCategory = await Category.findById(category);
 
-    // ================= DUPLICATE CHECK / RE-REGISTER =================
-    let vendorExist = await Vendor.findOne({ phone });
-
-    if (vendorExist) {
-      if (vendorExist.status === "rejected") {
-        // ================= RE-REGISTER REJECTED VENDOR =================
-        vendorExist.name = name;
-        vendorExist.email = email;
-        vendorExist.shop = {
-          name: shopName,
-          description: shopDescription,
-          category: categoryExists._id,
-          shopImage:
-            req.files?.shopImage?.[0]?.path || vendorExist.shop.shopImage,
-          documents: {
-            shopLicense:
-              req.files?.shopLicense?.[0]?.path ||
-              vendorExist.shop.documents.shopLicense,
-            fssai:
-              req.files?.fssai?.[0]?.path || vendorExist.shop.documents.fssai,
-          },
-          address: {
-            street,
-            city,
-            state,
-            pincode,
-            landmark,
-          },
-          geoLocation: {
-            lat,
-            lng,
-          },
-          verified: false,
-        };
-        vendorExist.aadhar.numberMasked = aadharNumber;
-        vendorExist.aadhar.documentImage =
-          req.files?.aadharDoc?.[0]?.path || vendorExist.aadhar.documentImage;
-        vendorExist.pan.number = panNumber;
-        vendorExist.pan.documentImage =
-          req.files?.panDoc?.[0]?.path || vendorExist.pan.documentImage;
-        vendorExist.gst.number = gstNumber;
-        vendorExist.gst.documentImage =
-          req.files?.gstDoc?.[0]?.path || vendorExist.gst.documentImage;
-
-        vendorExist.status = "pending";
-        vendorExist.approved = false;
-        vendorExist.rejectionReason = null;
-        vendorExist.loginMethod = "phone";
-
-        await vendorExist.save();
-
-        return res.status(200).json({
-          success: true,
-          message:
-            "Vendor re-registered successfully. Please wait for admin approval.",
-          vendorId: vendorExist._id,
-        });
-      } else {
-        return res.status(409).json({
+      if (!finalCategory) {
+        return res.status(400).json({
           success: false,
-          message: "Vendor already applied with this phone number",
+          message: "Invalid category id",
         });
       }
     }
+    // Case 2: First store → auto Grocery
+    else {
+      finalCategory = await Category.findOne({
+        name: { $regex: /^grocery/i },
+        isActive: true,
+      });
+
+      if (!finalCategory) {
+        return res.status(500).json({
+          success: false,
+          message: "Default Grocery category not found",
+        });
+      }
+    }
+
+    // ================= DUPLICATE CHECK =================
+    let vendorExist = await Vendor.findOne({ phone });
 
     // ================= FILES =================
     const profileImage = req.files?.profileImage?.[0]?.path || null;
@@ -130,60 +85,116 @@ export const createVendor = async (req, res) => {
     const panDoc = req.files?.panDoc?.[0]?.path || null;
     const gstDoc = req.files?.gstDoc?.[0]?.path || null;
 
+    // ================= RE-REGISTER (REJECTED) =================
+    if (vendorExist) {
+      if (vendorExist.status === "rejected") {
+        vendorExist.name = name;
+        vendorExist.email = email;
+        vendorExist.profileImage = profileImage || vendorExist.profileImage;
+
+        vendorExist.aadhar = {
+          numberMasked: aadharNumber,
+          documentImage: aadharDoc || vendorExist.aadhar?.documentImage,
+        };
+        vendorExist.pan = {
+          number: panNumber,
+          documentImage: panDoc || vendorExist.pan?.documentImage,
+        };
+        vendorExist.gst = {
+          number: gstNumber,
+          documentImage: gstDoc || vendorExist.gst?.documentImage,
+        };
+
+        vendorExist.status = "pending";
+        vendorExist.approved = false;
+        vendorExist.rejectionReason = null;
+        vendorExist.loginMethod = "phone";
+
+        await vendorExist.save();
+
+        // ================= CREATE FIRST STORE =================
+        const store = await Store.create({
+          vendorId: vendorExist._id,
+          name: shopName,
+          category: categoryExists._id,
+          description: shopDescription || "",
+          shopImage,
+          documents: { shopLicense, fssai },
+          address: { street, city, state, pincode, landmark },
+          geoLocation: { lat, lng },
+          verified: false,
+          status: "active",
+          isActive: true,
+        });
+
+        // Add store to vendor's stores array
+        vendorExist.stores.push(store._id);
+        await vendorExist.save();
+
+        return res.status(200).json({
+          success: true,
+          message:
+            "Vendor re-registered successfully. First store created. Please wait for admin approval.",
+          vendorId: vendorExist._id,
+          storeId: store._id,
+        });
+      }
+
+      return res.status(409).json({
+        success: false,
+        message: "Vendor already applied with this phone number",
+      });
+    }
+
     // ================= CREATE NEW VENDOR =================
     const vendor = await Vendor.create({
       name,
       email,
       phone,
       profileImage,
-
-      shop: {
-        name: shopName,
-        description: shopDescription,
-        category: categoryExists._id,
-        shopImage,
-        documents: {
-          shopLicense,
-          fssai,
-        },
-        address: {
-          street,
-          city,
-          state,
-          pincode,
-          landmark,
-        },
-        geoLocation: {
-          lat,
-          lng,
-        },
-      },
-
       aadhar: {
         numberMasked: aadharNumber,
         documentImage: aadharDoc,
       },
-
       pan: {
         number: panNumber,
         documentImage: panDoc,
       },
-
       gst: {
         number: gstNumber,
         documentImage: gstDoc,
       },
-
       status: "pending",
       approved: false,
       loginMethod: "phone",
     });
 
+    // ================= CREATE FIRST STORE =================
+    const store = await Store.create({
+      vendorId: vendor._id,
+      name: shopName,
+      category: finalCategory._id,
+
+      description: shopDescription || "",
+      shopImage,
+      documents: { shopLicense, fssai },
+      address: { street, city, state, pincode, landmark },
+      geoLocation: { lat, lng },
+      verified: false,
+      status: "active",
+      isActive: true,
+    });
+
+    // Add store to vendor's stores array
+    vendor.stores.push(store._id);
+    await vendor.save();
+
     return res.status(201).json({
       success: true,
       message:
-        "Vendor application submitted successfully. Please wait for admin approval.",
+        "Vendor registered successfully. First store created. Please wait for admin approval.",
       vendorId: vendor._id,
+      storeId: store._id,
     });
   } catch (error) {
     console.error("Vendor Create Error:", error);
@@ -453,10 +464,10 @@ export const updateRejectedVendor = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      
+
       message:
         "Application updated successfully and sent again for admin approval",
-        vendor
+      vendor,
     });
   } catch (error) {
     return res.status(500).json({
@@ -478,95 +489,107 @@ export const createStore = async (req, res) => {
       });
     }
 
-    let {
-      storeName,
+    const {
+      name,
+      category,
       description,
-      phone,
-      email,
-      address,
 
-      geoLocation,
-      openingHours,
-      status,
-      delivery,
-      tax,
+      "address.street": street,
+      "address.city": city,
+      "address.state": state,
+      "address.pincode": pincode,
+      "address.landmark": landmark,
+
+      "geoLocation.lat": lat,
+      "geoLocation.lng": lng,
+
+      "openingHours.open": open,
+      "openingHours.close": close,
+
+      "delivery.type": deliveryType,
+      "delivery.perKmCharge": perKmCharge,
+      "delivery.flatCharge": flatCharge,
+      "delivery.maxRadiusKm": maxRadiusKm,
+      "delivery.baseDeliveryTime": baseDeliveryTime,
+      "delivery.timePerKm": timePerKm,
+
+      "tax.gstPercent": gstPercent,
     } = req.body;
 
-    if (!storeName) {
+    // ================= REQUIRED VALIDATION =================
+    if (!name || !category) {
       return res.status(400).json({
         success: false,
-        message: "Store name required",
+        message: "Store name and category are required",
       });
     }
 
-    // Parse JSON strings
-    if (typeof address === "string") address = JSON.parse(address);
-    if (typeof geoLocation === "string") geoLocation = JSON.parse(geoLocation);
-    if (typeof openingHours === "string")
-      openingHours = JSON.parse(openingHours);
-    if (typeof delivery === "string") delivery = JSON.parse(delivery);
-    if (typeof tax === "string") tax = JSON.parse(tax);
+    // ================= FILES =================
+    const storeImage = req.files?.storeImage?.[0]?.path || null;
+    const shopLicense = req.files?.shopLicense?.[0]?.path || null;
+    const fssai = req.files?.fssai?.[0]?.path || null;
+    const otherDocs = req.files?.otherDocs?.map((f) => f.path) || [];
 
-    // Geo validation
-    if (geoLocation?.lat === undefined || geoLocation?.lng === undefined) {
-      return res.status(400).json({
-        success: false,
-        message: "Geo location required",
-      });
-    }
-
-    // ✅ Correct image handling
-    const storeImage = req.file ? req.file.path : null;
-
+    // ================= CREATE STORE =================
     const store = await Store.create({
       vendorId: vendor._id,
-      storeName,
-      storeImage,
+
+      name,
+      category,
+
       description: description || "",
-      phone: phone || "",
-      email: email || "",
+      storeImage,
+
+      documents: {
+        shopLicense,
+        fssai,
+        other: otherDocs,
+      },
 
       address: {
-        street: address?.street || "",
-        city: address?.city || "",
-        state: address?.state || "",
-        pincode: address?.pincode || "",
-        landmark: address?.landmark || "",
+        street: street || "",
+        city: city || "",
+        state: state || "",
+        pincode: pincode || "",
+        landmark: landmark || "",
       },
 
       geoLocation: {
-        lat: geoLocation.lat,
-        lng: geoLocation.lng,
+        lat: lat || "",
+        lng: lng || "",
       },
 
       openingHours: {
-        open: openingHours?.open || "09:00",
-        close: openingHours?.close || "21:00",
+        open: open || "09:00",
+        close: close || "21:00",
       },
 
-      status: status || "active",
-
       delivery: {
-        type: delivery?.type || "per_km",
-        perKmCharge: delivery?.perKmCharge || 0,
-        flatCharge: delivery?.flatCharge || 0,
-        maxRadiusKm: delivery?.maxRadiusKm || 10,
-        baseDeliveryTime: delivery?.baseDeliveryTime || 20,
-        timePerKm: delivery?.timePerKm || 5,
+        type: deliveryType || "per_km",
+        perKmCharge: Number(perKmCharge) || 0,
+        flatCharge: Number(flatCharge) || 0,
+        maxRadiusKm: Number(maxRadiusKm) || 10,
+        baseDeliveryTime: Number(baseDeliveryTime) || 20,
+        timePerKm: Number(timePerKm) || 5,
       },
 
       tax: {
-        gstPercent: tax?.gstPercent || 0,
+        gstPercent: Number(gstPercent) || 0,
       },
+
+      verified: false,
+      status: "active",
+      isActive: true,
     });
 
-    res.status(201).json({
+    return res.status(201).json({
       success: true,
       message: "Store created successfully",
       store,
     });
   } catch (error) {
-    res.status(500).json({
+    console.error("Create Store Error:", error);
+    return res.status(500).json({
       success: false,
       message: error.message,
     });
